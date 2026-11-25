@@ -1,4 +1,4 @@
-const C = 'sw-hd-v10';
+const C = 'sw-hd-v11';
 const A = ['./','index.html','style.css','app.js','manifest.json','lib/ffmpeg.js','lib/814.ffmpeg.js','lib/util.js','lib/ffmpeg-core.js','lib/ffmpeg-core.wasm'];
 
 self.addEventListener('install', e => e.waitUntil(
