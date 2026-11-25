@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SW HD</title>
+<meta name="theme-color" content="#ffffff">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <span class="chip">By @Kyoharu</span>
+  <h1>SW HD</h1>
+  <p class="sub">Tidak selalu berhasil :v</p>
+</header>
+<main>
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="video/*" hidden>
+    <span class="big" id="dropTitle">Pilih video dulu</span>
+    <span class="hint" id="dropHint">Semua diolah langsung di HP kamu, aman gak di-upload ke mana-mana.</span>
+  </label>
+
+  <section id="stage" hidden>
+    <div class="frame"><video id="pv" controls playsinline preload="metadata"></video></div>
+    <dl class="meta">
+      <div><dt>Durasi</dt><dd id="mDur"></dd></div>
+      <div><dt>Resolusi</dt><dd id="mRes"></dd></div>
+      <div><dt>Ukuran</dt><dd id="mSize"></dd></div>
+      <div><dt>Hasil</dt><dd id="mParts"></dd></div>
+    </dl>
+
+    <ol class="tl" id="tl" aria-label="Pembagian bagian video"></ol>
+
+    <fieldset>
+      <legend>Frame rate</legend>
+      <div class="seg" id="fpsSeg">
+        <button type="button" data-v="30" aria-pressed="true">30 fps</button>
+        <button type="button" data-v="60" aria-pressed="false">60 fps</button>
+      </div>
+      <p class="note">60 fps cuma kerasa bedanya kalau video aslinya memang udah 60 fps dari awal.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Mode proses</legend>
+      <div class="seg" id="qSeg">
+        <button type="button" data-v="1" aria-pressed="true">Bagus (lama)</button>
+        <button type="button" data-v="0" aria-pressed="false">Cepat</button>
+      </div>
+      <p class="note">Mode Bagus bikin detail lebih tajam di ukuran file yang sama, cuma nunggunya agak lama.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Potong per berapa detik</legend>
+      <div class="seg" id="lenSeg">
+        <button type="button" data-v="30" aria-pressed="true">30 detik</button>
+        <button type="button" data-v="60" aria-pressed="false">60 detik</button>
+        <button type="button" data-v="90" aria-pressed="false">90 detik</button>
+      </div>
+      <p class="note">Sesuaikan sama batas durasi Status WA kamu. Makin panjang durasinya, jatah bitrate per bagian bakal makin kecil.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Target ukuran file</legend>
+      <div class="seg" id="sizeSeg">
+        <button type="button" data-v="7" aria-pressed="true">7 MB</button>
+        <button type="button" data-v="10" aria-pressed="false">10 MB</button>
+        <button type="button" data-v="15" aria-pressed="false">15 MB</button>
+      </div>
+      <p class="note">Resolusi dan fps tetap aman, cuma bitrate-nya yang disesuaikan. Kalau masih kena kompres WA, coba turunin ke 7 MB.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Bitrate manual (opsional)</legend>
+      <input class="num" id="kbIn" type="number" inputmode="numeric" min="300" max="20000" placeholder="Isi angka kbps (kosongin = otomatis)">
+      <p class="note">Kalau diisi, target ukuran di atas bakal diabaikan. Patokannya: 1800 kbps itu sekitar 7 MB buat durasi 30 detik.</p>
+    </fieldset>
+
+    <button class="go" id="go" type="button">Gas proses</button>
+    <button class="cancel" id="cancel" type="button" hidden>Stop</button>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <ol class="res" id="res"></ol>
+</main>
+<script src="lib/ffmpeg.js"></script>
+<script src="lib/util.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
