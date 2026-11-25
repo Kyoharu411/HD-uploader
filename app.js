@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s);
 const S = { file: null, buf: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
 
+const MAX_MB = 350; // Batas aman ukuran video agar RAM HP tidak penuh
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const mb = b => (b / 1048576).toFixed(1) + ' MB';
 const say = (t, err) => { const el = $('#status'); el.textContent = t; el.classList.toggle('err', !!err); };
@@ -24,7 +25,7 @@ function renderPlan(force) {
     li.innerHTML = '<span>Bagian ' + (p.i + 1) + '</span>';
     tl.appendChild(li);
   });
-  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file utuh (tidak dipotong)');
+  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file utuh (gak dipotong)');
 }
 
 function bindSeg(id, key) {
@@ -52,28 +53,25 @@ function failPick(msg) {
   $('#dropHint').textContent = msg;
 }
 
-// Fungsi pembacaan bertahap (stream) agar file dari Google Photos / Cloud terunduh sempurna
-async function readCloudSafeFile(file) {
+// Tarik isi video secara bertahap (mendukung Google Photos, Drive, & galeri lokal)
+async function readFileSafe(file) {
   if (file.stream) {
     const reader = file.stream().getReader();
     const chunks = [];
-    let received = 0;
+    let got = 0;
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
-      received += value.length;
+      got += value.length;
       if (file.size > 0) {
-        const pct = Math.min(100, Math.round((received / file.size) * 100));
-        $('#dropHint').textContent = 'Mengambil video (' + pct + '%)...';
+        const pct = Math.min(100, Math.round((got / file.size) * 100));
+        $('#dropHint').textContent = 'Lagi ngambil video (' + pct + '%)...';
       }
     }
-    const out = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) {
-      out.set(chunk, offset);
-      offset += chunk.length;
-    }
+    const out = new Uint8Array(got);
+    let pos = 0;
+    for (const c of chunks) { out.set(c, pos); pos += c.length; }
     return out;
   }
   return new Uint8Array(await file.arrayBuffer());
@@ -85,38 +83,39 @@ $('#file').addEventListener('change', async e => {
   if (S.url) URL.revokeObjectURL(S.url);
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = [];
   $('#res').innerHTML = ''; say('');
-  
-  S.file = f; 
-  S.buf = null;
-  S.dur = 0;
+
+  // Cek batas ukuran file agar RAM HP tidak crash
+  if (f.size > MAX_MB * 1048576) {
+    e.target.value = '';
+    return failPick('Ukuran videonya kegedean (' + mb(f.size) + '). Maksimal ' + MAX_MB + ' MB ya biar RAM HP gak penuh.');
+  }
+
+  S.file = f; S.buf = null; S.dur = 0;
   $('#stage').hidden = true;
   $('#go').disabled = true;
   $('#drop').classList.add('small');
   $('#dropTitle').textContent = f.name;
-  $('#dropHint').textContent = 'Sedang menyiapkan video dari galeri/cloud, mohon tunggu...';
+  $('#dropHint').textContent = 'Lagi nyiapin video dari galeri/cloud, tunggu bentar...';
 
-  // Langsung tarik penuh isi file (mendukung Google Photos, Drive, & penyimpanan lokal)
   try {
-    S.buf = await readCloudSafeFile(f);
+    S.buf = await readFileSafe(f);
   } catch (_) {
     e.target.value = '';
-    return failPick('Maaf, video gagal diambil dari galeri/cloud. Pastikan koneksi internet stabil jika mengambil dari Google Photos, lalu silakan coba pilih ulang.');
+    return failPick('Maaf, videonya gagal diambil dari galeri/cloud. Pastikan internet lancar kalau ambil dari Google Photos, terus coba pilih ulang ya.');
   }
   e.target.value = '';
 
-  // Buat Blob URL lokal dari S.buf agar pemutar preview & FFmpeg 100% stabil
-  const localBlob = new Blob([S.buf], { type: f.type || 'video/mp4' });
-  S.url = URL.createObjectURL(localBlob);
-
+  S.url = URL.createObjectURL(new Blob([S.buf], { type: f.type || 'video/mp4' }));
   const pv = $('#pv');
   pv.onloadedmetadata = () => {
     if (S.dur) return;
-    if (!isFinite(pv.duration) || pv.duration <= 0) return failPick('Maaf, durasi video tidak terbaca. Silakan coba pilih video lain ya.');
+    if (!isFinite(pv.duration) || pv.duration <= 0) return failPick('Durasinya gak kebaca nih. Coba pilih video lain ya.');
     S.dur = pv.duration;
     const origKbps = Math.round(S.buf.length * 8 / 1000 / S.dur);
     $('#mDur').textContent = fmt(S.dur);
     $('#mRes').textContent = pv.videoWidth + 'x' + pv.videoHeight;
     $('#mSize').textContent = mb(S.buf.length) + ' (' + origKbps + ' kbps)';
+    $('#drop').classList.add('small');
     $('#dropTitle').textContent = f.name;
     $('#dropHint').textContent = 'Ganti video';
     $('#stage').hidden = false;
@@ -125,7 +124,7 @@ $('#file').addEventListener('change', async e => {
   };
   pv.onerror = () => {
     if (S.dur) return;
-    failPick('Maaf, format video ini belum didukung oleh browser.');
+    failPick('Maaf, format videonya belum didukung sama browser ini.');
   };
   pv.src = S.url;
 });
@@ -147,22 +146,20 @@ async function load() {
 }
 
 async function attach(ff) {
-  if (!S.buf) {
-    S.buf = await readCloudSafeFile(S.file);
-  }
+  if (!S.buf) S.buf = await readFileSafe(S.file);
   await ff.writeFile('in.mp4', S.buf);
   return { path: 'in.mp4', mounted: false };
 }
 
-function friendlyError(err) {
-  const msg = String(err && err.message ? err.message : err);
-  if (/NotReadableError|readAsArrayBuffer|permission|could not be read/i.test(msg)) {
-    return 'Maaf, koneksi ke file terputus oleh sistem HP. Pastikan internet stabil jika mengambil dari Google Photos, lalu silakan pilih ulang videonya.';
+function friendlyErr(err) {
+  const m = String(err && err.message ? err.message : err);
+  if (/NotReadableError|readAsArrayBuffer|permission|could not be read/i.test(m)) {
+    return 'Maaf, izin akses videonya terputus oleh sistem HP. Pastikan internet stabil kalau ambil dari Google Photos, lalu coba pilih ulang videonya ya.';
   }
-  if (/memory|allocation|oom|out of memory/i.test(msg)) {
-    return 'Maaf, memori (RAM) HP penuh saat memproses video ini. Silakan tutup aplikasi lain yang berjalan di latar belakang atau gunakan video dengan ukuran lebih kecil.';
+  if (/memory|allocation|oom|out of memory/i.test(m)) {
+    return 'Maaf, memori (RAM) HP penuh saat ngolah video ini. Coba tutup aplikasi lain dulu atau pakai video yang lebih ringan ya.';
   }
-  return 'Maaf, proses terhenti karena kendala teknis pada perangkat. Silakan muat ulang halaman dan coba lagi ya.';
+  return 'Maaf, prosesnya terhenti karena kendala di browser HP. Silakan refresh halaman dan coba lagi ya.';
 }
 
 const levels = () => {
@@ -224,8 +221,8 @@ $('#go').addEventListener('click', async () => {
       let kb = bitrate(p.len);
       for (;;) {
         try {
-          if (!ff) { say('Sedang menyiapkan mesin video, mohon tunggu sebentar...'); ff = await load(); src = await attach(ff); }
-          say('Sedang mengolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ' • ' + kb + ' kbps). Mohon jangan tutup halaman ini ya.');
+          if (!ff) { say('Lagi nyiapin mesin video, tunggu bentar...'); ff = await load(); src = await attach(ff); }
+          say('Lagi ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ' • ' + kb + ' kbps). Jangan tutup halamannya ya.');
           const code = await encode(ff, src.path, p, name, LV[lv], kb);
           if (code !== 0) throw new Error('Proses berhenti (kode ' + code + '). ' + S.logs.slice(-2).join(' '));
           break;
@@ -234,16 +231,18 @@ $('#go').addEventListener('click', async () => {
           try { ff && ff.terminate(); } catch (_) {}
           S.ff = null; ff = null; src = null; lv++;
           S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-          say('Memori HP cukup terbatas, kualitas otomatis disesuaikan ke ' + LV[lv].label + ' ya...');
+          say('RAM HP agak mepet nih, otomatis turun ke ' + LV[lv].label + ' ya...');
         }
       }
       let data = await ff.readFile(name);
       const limit = S.target * 1048576 * 1.03;
       for (let t = 0; t < 2 && !S.manual && data.length > limit && kb > 400; t++) {
         kb = Math.max(400, Math.floor(kb * (S.target * 1048576) / data.length * 0.92));
-        say('Ukuran bagian ' + (p.i + 1) + ' masih sedikit besar (' + mb(data.length) + '), sedang disesuaikan ulang ke ' + kb + ' kbps...');
+        say('Bagian ' + (p.i + 1) + ' masih kegedean (' + mb(data.length) + '), diulang di ' + kb + ' kbps biar pas...');
         S.cur.style.setProperty('--p', '0%');
         if ((await encode(ff, src.path, p, name, LV[lv], kb)) !== 0) break;
         data = await ff.readFile(name);
       }
       await ff.deleteFile(name);
+      S.cur.style.setProperty('--p', '100%');
+      S.cur.firstChild.textContent = 'Selesai';
