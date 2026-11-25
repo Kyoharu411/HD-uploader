@@ -1,5 +1,5 @@
 const $ = s => document.querySelector(s);
-const S = { file: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
+const S = { file: null, buf: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [], noWorkerFs: false };
 
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const mb = b => (b / 1048576).toFixed(1) + ' MB';
@@ -24,7 +24,7 @@ function renderPlan(force) {
     li.innerHTML = '<span>Bagian ' + (p.i + 1) + '</span>';
     tl.appendChild(li);
   });
-  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file utuh (gak dipotong)');
+  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file utuh (tidak dipotong)');
 }
 
 function bindSeg(id, key) {
@@ -44,25 +44,42 @@ $('#kbIn').addEventListener('input', e => {
 
 function failPick(msg) {
   S.dur = 0;
+  S.buf = null;
   $('#stage').hidden = true;
   $('#go').disabled = true;
   $('#drop').classList.remove('small');
-  $('#dropTitle').textContent = 'Videonya gak bisa dibuka';
+  $('#dropTitle').textContent = 'Maaf, videonya belum bisa dibuka';
   $('#dropHint').textContent = msg;
 }
 
-$('#file').addEventListener('change', e => {
+$('#file').addEventListener('change', async e => {
   const f = e.target.files[0];
-  e.target.value = '';
   if (!f || S.busy) return;
   if (S.url) URL.revokeObjectURL(S.url);
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = [];
   $('#res').innerHTML = ''; say('');
-  S.file = f; S.url = URL.createObjectURL(f); S.dur = 0;
+  
+  S.file = f; 
+  S.buf = null;
+  S.noWorkerFs = false;
+  S.url = URL.createObjectURL(f); 
+  S.dur = 0;
+
+  // Amankan salinan file (< 250 MB) ke memori agar izin baca Android tidak terputus
+  if (f.size < 250 * 1048576) {
+    try {
+      S.buf = new Uint8Array(await f.arrayBuffer());
+    } catch (_) {
+      e.target.value = '';
+      return failPick('Maaf, file gagal dibaca oleh browser. Pastikan video sudah tersimpan di memori internal HP (bukan Google Photos/Drive) lalu silakan pilih ulang.');
+    }
+  }
+  e.target.value = '';
+
   const pv = $('#pv');
   pv.onloadedmetadata = () => {
     if (S.dur) return;
-    if (!isFinite(pv.duration) || pv.duration <= 0) return failPick('Durasinya gak kebaca nih. Coba pilih video lain ya.');
+    if (!isFinite(pv.duration) || pv.duration <= 0) return failPick('Maaf, durasi video tidak terbaca. Silakan coba pilih video lain ya.');
     S.dur = pv.duration;
     const origKbps = Math.round(f.size * 8 / 1000 / S.dur);
     $('#mDur').textContent = fmt(S.dur);
@@ -77,7 +94,7 @@ $('#file').addEventListener('change', e => {
   };
   pv.onerror = () => {
     if (S.dur) return;
-    failPick('Filenya belum beres di-download, atau formatnya memang gak didukung.');
+    failPick('Maaf, file belum selesai diunduh atau format videonya belum didukung.');
   };
   pv.src = S.url;
 });
@@ -99,14 +116,34 @@ async function load() {
 }
 
 async function attach(ff) {
-  try {
-    try { await ff.createDir('/in'); } catch (_) {}
-    await ff.mount('WORKERFS', { files: [S.file] }, '/in');
-    return { path: '/in/' + S.file.name, mounted: true };
-  } catch (_) {
-    await ff.writeFile('in', await FFmpegUtil.fetchFile(S.file));
-    return { path: 'in', mounted: false };
+  // Prioritaskan salinan memori yang sudah aman dari putus izin Android
+  if (S.buf) {
+    await ff.writeFile('in.mp4', S.buf);
+    return { path: 'in.mp4', mounted: false };
   }
+  // Gunakan WORKERFS hanya untuk file ekstra besar jika belum dipaksa fallback
+  if (!S.noWorkerFs) {
+    try {
+      try { await ff.createDir('/in'); } catch (_) {}
+      await ff.mount('WORKERFS', { files: [S.file] }, '/in');
+      return { path: '/in/' + S.file.name, mounted: true };
+    } catch (_) {}
+  }
+  // Fallback terakhir: baca ulang langsung ke virtual FS
+  const data = await FFmpegUtil.fetchFile(S.file);
+  await ff.writeFile('in.mp4', data);
+  return { path: 'in.mp4', mounted: false };
+}
+
+function friendlyError(err) {
+  const msg = String(err && err.message ? err.message : err);
+  if (/NotReadableError|readAsArrayBuffer|permission|could not be read/i.test(msg)) {
+    return 'Maaf, izin akses file terputus oleh sistem HP. Pastikan video tersimpan di galeri/memori internal (bukan Google Photos/Drive), lalu silakan pilih ulang videonya.';
+  }
+  if (/memory|allocation|oom|out of memory/i.test(msg)) {
+    return 'Maaf, memori (RAM) HP penuh saat memproses video ini. Silakan tutup aplikasi lain yang berjalan di latar belakang atau gunakan video dengan ukuran lebih kecil.';
+  }
+  return 'Maaf, proses terhenti karena kendala teknis pada perangkat. Silakan muat ulang halaman dan coba lagi ya.';
 }
 
 const levels = () => {
@@ -168,81 +205,32 @@ $('#go').addEventListener('click', async () => {
       let kb = bitrate(p.len);
       for (;;) {
         try {
-          if (!ff) { say('Lagi nyiapin mesin video, tunggu bentar...'); ff = await load(); src = await attach(ff); }
-          say('Lagi ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ' • ' + kb + ' kbps). Jangan tutup halamannya ya.');
+          if (!ff) { say('Sedang menyiapkan mesin video, mohon tunggu sebentar...'); ff = await load(); src = await attach(ff); }
+          say('Sedang mengolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ' • ' + kb + ' kbps). Mohon jangan tutup halaman ini ya.');
           const code = await encode(ff, src.path, p, name, LV[lv], kb);
           if (code !== 0) throw new Error('Proses berhenti (kode ' + code + '). ' + S.logs.slice(-2).join(' '));
           break;
         } catch (err) {
+          const isReadErr = /NotReadableError|readAsArrayBuffer|permission|could not be read/i.test(String(err && err.message ? err.message : err));
+          // Jika WORKERFS gagal baca di file besar, matikan WORKERFS dan ulangi dengan metode salin langsung
+          if (!S.cancel && isReadErr && src && src.mounted && !S.noWorkerFs) {
+            S.noWorkerFs = true;
+            try { ff && ff.terminate(); } catch (_) {}
+            S.ff = null; ff = null; src = null;
+            S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
+            say('Sedang menyesuaikan cara pembacaan file, mohon tunggu sebentar...');
+            continue;
+          }
           if (S.cancel || lv + 1 >= LV.length) throw err;
           try { ff && ff.terminate(); } catch (_) {}
           S.ff = null; ff = null; src = null; lv++;
           S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-          say('RAM HP agak mepet nih, otomatis turun ke ' + LV[lv].label + ' ya...');
+          say('Memori HP cukup terbatas, kualitas otomatis disesuaikan ke ' + LV[lv].label + ' ya...');
         }
       }
       let data = await ff.readFile(name);
       const limit = S.target * 1048576 * 1.03;
       for (let t = 0; t < 2 && !S.manual && data.length > limit && kb > 400; t++) {
         kb = Math.max(400, Math.floor(kb * (S.target * 1048576) / data.length * 0.92));
-        say('Bagian ' + (p.i + 1) + ' masih kegedean (' + mb(data.length) + '), diulang di ' + kb + ' kbps biar pas...');
+        say('Ukuran bagian ' + (p.i + 1) + ' masih sedikit besar (' + mb(data.length) + '), sedang disesuaikan ulang ke ' + kb + ' kbps...');
         S.cur.style.setProperty('--p', '0%');
-        if ((await encode(ff, src.path, p, name, LV[lv], kb)) !== 0) break;
-        data = await ff.readFile(name);
-      }
-      await ff.deleteFile(name);
-      S.cur.style.setProperty('--p', '100%');
-      S.cur.firstChild.textContent = 'Selesai';
-      addResult(new File([data.buffer], name, { type: 'video/mp4' }), p);
-    }
-    say(lv ? 'Beres! Tadi sempat diturunin ke ' + LV[lv].label + ' biar memori HP gak kepenuhan.' : 'Beres! Tinggal simpan, lalu upload ke Status berurutan dari yang pertama.');
-  } catch (err) {
-    console.error(err, S.logs);
-    if (S.cancel) say('Oke, prosesnya dibatalkan.');
-    else say('Yah, gagal: ' + (err.message || err), true);
-    try { ff && ff.terminate(); } catch (_) {}
-    S.ff = null; src = null;
-  }
-  if (src && ff) {
-    try { src.mounted ? await ff.unmount('/in') : await ff.deleteFile('in'); } catch (_) {}
-  }
-  if (lock) lock.release().catch(() => {});
-  S.cur = null; S.busy = false;
-  $('#go').disabled = false; $('#cancel').hidden = true;
-});
-
-$('#cancel').addEventListener('click', () => {
-  if (!S.busy) return;
-  S.cancel = true;
-  try { S.ff && S.ff.terminate(); } catch (_) {}
-});
-
-function addResult(f, p) {
-  const url = URL.createObjectURL(f);
-  S.outUrls.push(url);
-  const li = document.createElement('li');
-  li.innerHTML = '<span class="count">' + String(p.i + 1).padStart(2, '0') + '/ ' + String(S.total).padStart(2, '0') + '</span><div class="frame"><video controls playsinline preload="metadata"></video></div>' +
-    '<div class="row"><div><b></b><small>Lagi ngecek hasil...</small></div><div class="acts"></div></div>';
-  const v = li.querySelector('video'), chk = li.querySelector('small');
-  li.querySelector('b').textContent = f.name + ' (' + mb(f.size) + ', ' + Math.round(f.size * 8 / 1000 / p.len) + ' kbps)';
-  v.onloadedmetadata = () => {
-    const ok = isFinite(v.duration) && Math.abs(v.duration - p.len) < 2;
-    chk.textContent = ok ? 'Siap upload • Durasi ' + fmt(v.duration) : 'Durasinya agak meleset nih, coba proses ulang ya';
-    chk.className = ok ? 'ok' : 'bad';
-  };
-  v.onerror = () => { chk.textContent = 'Videonya gak bisa diputar, coba proses ulang ya'; chk.className = 'bad'; };
-  v.src = url;
-  const acts = li.querySelector('.acts');
-  if (navigator.canShare && navigator.canShare({ files: [f] })) {
-    const s = document.createElement('button');
-    s.className = 'main'; s.textContent = 'Bagikan';
-    s.onclick = () => navigator.share({ files: [f] }).catch(() => {});
-    acts.appendChild(s);
-  }
-  const a = document.createElement('a');
-  a.href = url; a.download = f.name; a.textContent = 'Simpan';
-  acts.appendChild(a);
-  $('#res').appendChild(li);
-}
-
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
