@@ -1,7 +1,7 @@
 const $ = s => document.querySelector(s);
 const S = { file: null, buf: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
 
-const MAX_MB = 350; // Batas aman ukuran video agar RAM HP tidak penuh
+const MAX_MB = 350;
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const mb = b => (b / 1048576).toFixed(1) + ' MB';
 const say = (t, err) => { const el = $('#status'); el.textContent = t; el.classList.toggle('err', !!err); };
@@ -53,7 +53,6 @@ function failPick(msg) {
   $('#dropHint').textContent = msg;
 }
 
-// Tarik isi video secara bertahap (mendukung Google Photos, Drive, & galeri lokal)
 async function readFileSafe(file) {
   if (file.stream) {
     const reader = file.stream().getReader();
@@ -84,7 +83,6 @@ $('#file').addEventListener('change', async e => {
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = [];
   $('#res').innerHTML = ''; say('');
 
-  // Cek batas ukuran file agar RAM HP tidak crash
   if (f.size > MAX_MB * 1048576) {
     e.target.value = '';
     return failPick('Ukuran videonya kegedean (' + mb(f.size) + '). Maksimal ' + MAX_MB + ' MB ya biar RAM HP gak penuh.');
@@ -246,3 +244,5 @@ $('#go').addEventListener('click', async () => {
       await ff.deleteFile(name);
       S.cur.style.setProperty('--p', '100%');
       S.cur.firstChild.textContent = 'Selesai';
+      addResult(new File([data.buffer], name, { type: 'video/mp4' }), p);
+    }
