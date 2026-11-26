@@ -12,16 +12,16 @@ button,input{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--ink);outline-offset:3px}
 
-header{max-width:520px;margin:0 auto;padding:30px 20px 4px;text-align:center}
+header{max-width:520px;margin:0 auto;padding:22px 20px 2px;text-align:center}
 .chip{display:inline-block;padding:2px 12px;border:var(--line);background:var(--card);box-shadow:var(--sh);
   font-size:.68rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
-h1{margin:22px 0 8px;font:700 2rem/1.1 var(--font);letter-spacing:.2em;text-transform:uppercase}
+h1{margin:14px 0 6px;font:700 1.7rem/1.1 var(--font);letter-spacing:.2em;text-transform:uppercase}
 .sub{margin:0;color:var(--mute);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase}
 
-main{max-width:520px;margin:0 auto;padding:22px 20px 80px}
+main{max-width:520px;margin:0 auto;padding:18px 20px 130px}
 
 .drop{display:flex;flex-direction:column;gap:8px;justify-content:center;align-items:center;text-align:center;
-  min-height:190px;padding:22px;cursor:pointer;border:var(--line);box-shadow:var(--sh);background:var(--card)}
+  min-height:170px;padding:22px;cursor:pointer;border:var(--line);box-shadow:var(--sh);background:var(--card)}
 .big{font-size:1.05rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
 .hint{color:var(--mute);font-size:.82rem}
 .drop.small{min-height:0;flex-direction:row;justify-content:space-between;text-align:left;padding:12px 16px;gap:12px}
@@ -29,17 +29,17 @@ main{max-width:520px;margin:0 auto;padding:22px 20px 80px}
 .drop.small .hint{flex:none;padding:2px 10px;border:var(--line);background:var(--card);color:var(--ink);
   font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
 
-#stage{margin-top:28px}
+#stage{margin-top:22px}
 .frame{display:grid;place-items:center;background:#000;border:var(--line);box-shadow:var(--sh);overflow:hidden}
-.frame video{display:block;max-width:100%;max-height:52vh}
+.frame video{display:block;max-width:100%;max-height:38vh}
 
-.meta{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:28px 0 24px}
-.meta div{padding:9px 12px;border:var(--line);box-shadow:var(--sh);background:var(--card)}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 16px}
+.meta div{padding:6px 10px;border:var(--line);box-shadow:var(--sh);background:var(--card)}
 .meta dt{color:var(--mute);font-size:.64rem;letter-spacing:.16em;text-transform:uppercase}
-.meta dd{margin:0;font-weight:700;font-variant-numeric:tabular-nums}
+.meta dd{margin:0;font-size:.86rem;font-weight:700;font-variant-numeric:tabular-nums}
 
-.tl{display:flex;gap:5px;list-style:none;margin:0 0 28px;padding:0}
-.tl li{position:relative;height:42px;min-width:0;border:var(--line);overflow:hidden;
+.tl{display:flex;gap:5px;list-style:none;margin:0 0 16px;padding:0}
+.tl li{position:relative;height:36px;min-width:0;border:var(--line);overflow:hidden;
   background:linear-gradient(90deg,var(--dark) var(--p,0%),var(--card) var(--p,0%))}
 .tl span{position:absolute;inset:0;display:flex;align-items:center;padding:0 7px;font-size:.68rem;font-weight:700;
   letter-spacing:.08em;text-transform:uppercase;font-variant-numeric:tabular-nums;color:#fff;mix-blend-mode:difference;
@@ -61,7 +61,7 @@ legend{padding:0;margin-bottom:10px;color:var(--mute);font-size:.68rem;font-weig
 .go:disabled{background:#cfcfca;color:var(--mute);box-shadow:none;cursor:default}
 .cancel{width:100%;min-height:46px;margin-top:14px;border:var(--line);background:var(--card);box-shadow:var(--sh);
   font-size:.76rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
-.status{margin:20px 0 0;padding:10px 14px;border:var(--line);box-shadow:var(--sh);background:var(--card);font-size:.86rem}
+.status{margin:16px 0 0;padding:10px 14px;border:var(--line);box-shadow:var(--sh);background:var(--card);font-size:.86rem}
 .status:empty{display:none}
 .status.err{background:repeating-linear-gradient(135deg,#dcdcd7 0 6px,var(--card) 6px 12px)}
 
@@ -79,3 +79,31 @@ legend{padding:0;margin-bottom:10px;color:var(--mute);font-size:.68rem;font-weig
   font-size:.7rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 .acts .main{background:var(--dark);color:#fff}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.setrow{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:0 14px;text-align:left;
+  border:var(--line);box-shadow:var(--sh);background:var(--card)}
+.setrow:disabled{opacity:.5;box-shadow:none}
+.setrow .k{flex:none;font-size:.68rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
+.setrow .v{flex:1;min-width:0;color:var(--mute);font-size:.8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setrow .c{flex:none;font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;border-bottom:2px solid var(--ink)}
+
+.dock{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;gap:10px;
+  padding:12px max(20px,calc((100vw - 480px)/2)) calc(12px + env(safe-area-inset-bottom));
+  background:var(--bg);border-top:var(--line)}
+.dock .go{flex:1}
+.dock .cancel{width:auto;margin:0;padding:0 20px;min-height:56px}
+
+.sheet{border:0;padding:0;margin:auto auto 0;width:100%;max-width:520px;background:var(--bg);color:var(--ink);
+  border-top:var(--line);box-shadow:0 -4px 0 var(--ink);overflow:hidden}
+.sheet[open]{animation:sheet-up .24s cubic-bezier(.22,1,.36,1)}
+.sheet::backdrop{background:rgba(18,18,16,.55)}
+@keyframes sheet-up{from{transform:translateY(28px);opacity:0}}
+.sheet-in{display:flex;flex-direction:column;max-height:86vh}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:var(--line)}
+.sheet-head b{font-size:.78rem;letter-spacing:.2em;text-transform:uppercase}
+.sheet-head .x{min-height:36px;padding:0 12px;border:var(--line);background:var(--card);
+  font-size:.68rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase}
+.sheet-body{overflow:auto;overscroll-behavior:contain;padding:20px 20px 0}
+.sheet-foot{padding:12px 20px calc(12px + env(safe-area-inset-bottom));border-top:var(--line)}
+.sheet-foot .go{width:100%}
+body:has(dialog[open]){overflow:hidden}
