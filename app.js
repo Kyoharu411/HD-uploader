@@ -1,5 +1,5 @@
 const $ = s => document.querySelector(s);
-const S = { file: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, noMount: false, picking: false, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
+const S = { file: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
 
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const mb = b => (b / 1048576).toFixed(1) + ' MB';
@@ -51,25 +51,14 @@ function failPick(msg) {
   $('#dropHint').textContent = msg;
 }
 
-$('#file').addEventListener('change', async e => {
+$('#file').addEventListener('change', e => {
   const f = e.target.files[0];
-  if (!f || S.busy || S.picking) { e.target.value = ''; return; }
-  S.picking = true;
+  e.target.value = '';
+  if (!f || S.busy) return;
   if (S.url) URL.revokeObjectURL(S.url);
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = [];
   $('#res').innerHTML = ''; say('');
-  S.noMount = false;
-  // Salin ke memori sekarang, selagi izin baca file masih aktif. Di Android, izin ini
-  // bisa hilang di tengah proses (NotReadableError), terutama kalau file dari Drive/chat.
-  let file = f;
-  if (f.size < 400 * 1048576) {
-    say('Lagi nyiapin videonya, bentar ya...');
-    try { file = new File([await f.arrayBuffer()], f.name, { type: f.type }); } catch (_) { file = f; }
-    say('');
-  }
-  e.target.value = '';
-  S.picking = false;
-  S.file = file; S.url = URL.createObjectURL(file); S.dur = 0;
+  S.file = f; S.url = URL.createObjectURL(f); S.dur = 0;
   const pv = $('#pv');
   pv.onloadedmetadata = () => {
     if (S.dur) return;
@@ -110,18 +99,15 @@ async function load() {
 }
 
 async function attach(ff) {
-  if (!S.noMount) {
-    try {
-      try { await ff.createDir('/in'); } catch (_) {}
-      await ff.mount('WORKERFS', { files: [S.file] }, '/in');
-      return { path: '/in/' + S.file.name, mounted: true };
-    } catch (_) {}
+  try {
+    try { await ff.createDir('/in'); } catch (_) {}
+    await ff.mount('WORKERFS', { files: [S.file] }, '/in');
+    return { path: '/in/' + S.file.name, mounted: true };
+  } catch (_) {
+    await ff.writeFile('in', await FFmpegUtil.fetchFile(S.file));
+    return { path: 'in', mounted: false };
   }
-  await ff.writeFile('in', await FFmpegUtil.fetchFile(S.file));
-  return { path: 'in', mounted: false };
 }
-
-const unreadable = err => /NotReadable|could not be read/i.test((err && err.message) || String(err));
 
 const levels = () => {
   const L = [
@@ -168,7 +154,6 @@ $('#go').addEventListener('click', async () => {
   $('#go').disabled = true; $('#cancel').hidden = false;
   $('#pv').pause();
   S.manual = Math.max(0, parseInt($('#kbIn').value, 10) || 0);
-  if (S.manual > 20000) { S.manual = 20000; $('#kbIn').value = 20000; }
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = []; $('#res').innerHTML = '';
   S.logs = [];
   renderPlan(true);
@@ -189,16 +174,7 @@ $('#go').addEventListener('click', async () => {
           if (code !== 0) throw new Error('Proses berhenti (kode ' + code + '). ' + S.logs.slice(-2).join(' '));
           break;
         } catch (err) {
-          if (S.cancel) throw err;
-          if (unreadable(err) && !S.noMount) {
-            S.noMount = true;
-            try { ff && ff.terminate(); } catch (_) {}
-            S.ff = null; ff = null; src = null;
-            S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-            say('Filenya susah dibaca langsung, nyoba cara lain ya...');
-            continue;
-          }
-          if (lv + 1 >= LV.length) throw err;
+          if (S.cancel || lv + 1 >= LV.length) throw err;
           try { ff && ff.terminate(); } catch (_) {}
           S.ff = null; ff = null; src = null; lv++;
           S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
@@ -223,7 +199,6 @@ $('#go').addEventListener('click', async () => {
   } catch (err) {
     console.error(err, S.logs);
     if (S.cancel) say('Oke, prosesnya dibatalkan.');
-    else if (unreadable(err)) say('Yah, videonya gak bisa dibaca browser. Pindahin dulu ke folder Download atau Galeri (jangan dari Drive atau chat), lalu pilih ulang dan langsung proses.', true);
     else say('Yah, gagal: ' + (err.message || err), true);
     try { ff && ff.terminate(); } catch (_) {}
     S.ff = null; src = null;
