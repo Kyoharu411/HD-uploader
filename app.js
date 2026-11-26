@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s);
-const S = { file: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
+const S = { file: null, buf: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1, busy: false, cancel: false, ff: null, cur: null, logs: [], outUrls: [] };
 
+const MAX_MB = 350;
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const mb = b => (b / 1048576).toFixed(1) + ' MB';
 const say = (t, err) => { const el = $('#status'); el.textContent = t; el.classList.toggle('err', !!err); };
@@ -44,30 +45,74 @@ $('#kbIn').addEventListener('input', e => {
 
 function failPick(msg) {
   S.dur = 0;
+  S.buf = null;
   $('#stage').hidden = true;
   $('#go').disabled = true;
   $('#drop').classList.remove('small');
-  $('#dropTitle').textContent = 'Videonya gak bisa dibuka';
+  $('#dropTitle').textContent = 'Maaf, videonya belum bisa dibuka';
   $('#dropHint').textContent = msg;
 }
 
-$('#file').addEventListener('change', e => {
-  const f = e.target.files[0];
-  e.target.value = '';
+async function readFileSafe(file) {
+  if (file.stream) {
+    const reader = file.stream().getReader();
+    const chunks = [];
+    let got = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got += value.length;
+      if (file.size > 0) {
+        const pct = Math.min(100, Math.round((got / file.size) * 100));
+        $('#dropHint').textContent = 'Lagi ngambil video (' + pct + '%)...';
+      }
+    }
+    const out = new Uint8Array(got);
+    let pos = 0;
+    for (const c of chunks) { out.set(c, pos); pos += c.length; }
+    return out;
+  }
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+$('#file').addEventListener('change', async e => {
+  const f = e.target.files.item(0);
   if (!f || S.busy) return;
   if (S.url) URL.revokeObjectURL(S.url);
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = [];
   $('#res').innerHTML = ''; say('');
-  S.file = f; S.url = URL.createObjectURL(f); S.dur = 0;
+
+  if (f.size > MAX_MB * 1048576) {
+    e.target.value = '';
+    return failPick('Ukuran videonya kegedean (' + mb(f.size) + '). Maksimal ' + MAX_MB + ' MB ya biar RAM HP gak penuh.');
+  }
+
+  S.file = f; S.buf = null; S.dur = 0;
+  $('#stage').hidden = true;
+  $('#go').disabled = true;
+  $('#drop').classList.add('small');
+  $('#dropTitle').textContent = f.name;
+  $('#dropHint').textContent = 'Lagi nyiapin video dari galeri/cloud, tunggu bentar...';
+
+  try {
+    S.buf = await readFileSafe(f);
+  } catch (_) {
+    e.target.value = '';
+    return failPick('Maaf, videonya gagal diambil dari galeri/cloud. Pastikan internet lancar kalau ambil dari Google Photos, terus coba pilih ulang ya.');
+  }
+  e.target.value = '';
+
+  S.url = URL.createObjectURL(new Blob([S.buf], { type: f.type || 'video/mp4' }));
   const pv = $('#pv');
   pv.onloadedmetadata = () => {
     if (S.dur) return;
     if (!isFinite(pv.duration) || pv.duration <= 0) return failPick('Durasinya gak kebaca nih. Coba pilih video lain ya.');
     S.dur = pv.duration;
-    const origKbps = Math.round(f.size * 8 / 1000 / S.dur);
+    const origKbps = Math.round(S.buf.length * 8 / 1000 / S.dur);
     $('#mDur').textContent = fmt(S.dur);
     $('#mRes').textContent = pv.videoWidth + 'x' + pv.videoHeight;
-    $('#mSize').textContent = mb(f.size) + ' (' + origKbps + ' kbps)';
+    $('#mSize').textContent = mb(S.buf.length) + ' (' + origKbps + ' kbps)';
     $('#drop').classList.add('small');
     $('#dropTitle').textContent = f.name;
     $('#dropHint').textContent = 'Ganti video';
@@ -77,7 +122,7 @@ $('#file').addEventListener('change', e => {
   };
   pv.onerror = () => {
     if (S.dur) return;
-    failPick('Filenya belum beres di-download, atau formatnya memang gak didukung.');
+    failPick('Maaf, format videonya belum didukung sama browser ini.');
   };
   pv.src = S.url;
 });
@@ -99,14 +144,20 @@ async function load() {
 }
 
 async function attach(ff) {
-  try {
-    try { await ff.createDir('/in'); } catch (_) {}
-    await ff.mount('WORKERFS', { files: [S.file] }, '/in');
-    return { path: '/in/' + S.file.name, mounted: true };
-  } catch (_) {
-    await ff.writeFile('in', await FFmpegUtil.fetchFile(S.file));
-    return { path: 'in', mounted: false };
+  if (!S.buf) S.buf = await readFileSafe(S.file);
+  await ff.writeFile('in', S.buf);
+  return { path: 'in', mounted: false };
+}
+
+function friendlyErr(err) {
+  const m = String(err && err.message ? err.message : err);
+  if (/NotReadableError|readAsArrayBuffer|permission|could not be read/i.test(m)) {
+    return 'Maaf, izin akses videonya terputus oleh sistem HP. Pastikan internet stabil kalau ambil dari Google Photos, lalu coba pilih ulang videonya ya.';
   }
+  if (/memory|allocation|oom|out of memory/i.test(m)) {
+    return 'Maaf, memori (RAM) HP penuh saat ngolah video ini. Coba tutup aplikasi lain dulu atau pakai video yang lebih ringan ya.';
+  }
+  return 'Maaf, prosesnya terhenti karena kendala di browser HP. Silakan refresh halaman dan coba lagi ya.';
 }
 
 const levels = () => {
@@ -157,13 +208,13 @@ $('#go').addEventListener('click', async () => {
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = []; $('#res').innerHTML = '';
   S.logs = [];
   renderPlan(true);
-  const items = [...$('#tl').children], parts = plan(), LV = levels();
+  const items = Array.from($('#tl').children), parts = plan(), LV = levels();
   S.total = parts.length;
   let lock = null, ff = null, src = null, lv = 0;
   try {
     try { lock = await navigator.wakeLock.request('screen'); } catch (_) {}
     for (const p of parts) {
-      S.cur = items[p.i];
+      S.cur = items.at(p.i);
       const name = 'sw-' + String(p.i).padStart(3, '0') + '.mp4';
       let kb = bitrate(p.len);
       for (;;) {
@@ -195,54 +246,3 @@ $('#go').addEventListener('click', async () => {
       S.cur.firstChild.textContent = 'Selesai';
       addResult(new File([data.buffer], name, { type: 'video/mp4' }), p);
     }
-    say(lv ? 'Beres! Tadi sempat diturunin ke ' + LV[lv].label + ' biar memori HP gak kepenuhan.' : 'Beres! Tinggal simpan, lalu upload ke Status berurutan dari yang pertama.');
-  } catch (err) {
-    console.error(err, S.logs);
-    if (S.cancel) say('Oke, prosesnya dibatalkan.');
-    else say('Yah, gagal: ' + (err.message || err), true);
-    try { ff && ff.terminate(); } catch (_) {}
-    S.ff = null; src = null;
-  }
-  if (src && ff) {
-    try { src.mounted ? await ff.unmount('/in') : await ff.deleteFile('in'); } catch (_) {}
-  }
-  if (lock) lock.release().catch(() => {});
-  S.cur = null; S.busy = false;
-  $('#go').disabled = false; $('#cancel').hidden = true;
-});
-
-$('#cancel').addEventListener('click', () => {
-  if (!S.busy) return;
-  S.cancel = true;
-  try { S.ff && S.ff.terminate(); } catch (_) {}
-});
-
-function addResult(f, p) {
-  const url = URL.createObjectURL(f);
-  S.outUrls.push(url);
-  const li = document.createElement('li');
-  li.innerHTML = '<span class="count">' + String(p.i + 1).padStart(2, '0') + '/ ' + String(S.total).padStart(2, '0') + '</span><div class="frame"><video controls playsinline preload="metadata"></video></div>' +
-    '<div class="row"><div><b></b><small>Lagi ngecek hasil...</small></div><div class="acts"></div></div>';
-  const v = li.querySelector('video'), chk = li.querySelector('small');
-  li.querySelector('b').textContent = f.name + ' (' + mb(f.size) + ', ' + Math.round(f.size * 8 / 1000 / p.len) + ' kbps)';
-  v.onloadedmetadata = () => {
-    const ok = isFinite(v.duration) && Math.abs(v.duration - p.len) < 2;
-    chk.textContent = ok ? 'Siap upload • Durasi ' + fmt(v.duration) : 'Durasinya agak meleset nih, coba proses ulang ya';
-    chk.className = ok ? 'ok' : 'bad';
-  };
-  v.onerror = () => { chk.textContent = 'Videonya gak bisa diputar, coba proses ulang ya'; chk.className = 'bad'; };
-  v.src = url;
-  const acts = li.querySelector('.acts');
-  if (navigator.canShare && navigator.canShare({ files: [f] })) {
-    const s = document.createElement('button');
-    s.className = 'main'; s.textContent = 'Bagikan';
-    s.onclick = () => navigator.share({ files: [f] }).catch(() => {});
-    acts.appendChild(s);
-  }
-  const a = document.createElement('a');
-  a.href = url; a.download = f.name; a.textContent = 'Simpan';
-  acts.appendChild(a);
-  $('#res').appendChild(li);
-}
-
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
