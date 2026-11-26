@@ -15,10 +15,10 @@ const errText = err => String((err && err.message) || err);
 const unreadable = err => /NotReadable|could not be read/i.test(errText(err));
 const friendly = err => {
   const m = errText(err);
-  if (unreadable(err)) return 'Yah, videonya gak bisa dibaca browser. Pindahin dulu ke folder Download atau Galeri (jangan dari Drive atau chat), lalu pilih ulang dan langsung proses.';
-  if (/memory|Aborted|out of bounds|allocation|RangeError/i.test(m)) return 'Yah, memori HP-nya gak kuat. Coba Mode Cepat, 30 fps, tutup aplikasi lain, lalu ulangi.';
-  if (/Failed to fetch|NetworkError|Load failed|failed to import|ffmpeg-core/i.test(m)) return 'Mesin videonya gagal dimuat. Cek internet, muat ulang halaman, atau coba pakai Chrome terbaru.';
-  return 'Yah, gagal: ' + m;
+  if (unreadable(err)) return 'Video gak bisa dibaca browser. Pindahin ke Download atau Galeri (bukan dari Drive/chat), pilih ulang, langsung proses.';
+  if (/memory|Aborted|out of bounds|allocation|RangeError/i.test(m)) return 'Memori HP gak kuat. Coba mode Cepat, 30 fps, tutup aplikasi lain.';
+  if (/Failed to fetch|NetworkError|Load failed|failed to import|ffmpeg-core/i.test(m)) return 'Mesin video gagal dimuat. Cek internet, muat ulang, atau pakai Chrome terbaru.';
+  return 'Gagal: ' + m;
 };
 
 function clearReport() { const b = $('#reportBtn'); if (b) b.remove(); }
@@ -37,7 +37,7 @@ function showReport(err) {
       'Error: ' + errText(err),
       'Log: ' + S.logs.slice(-12).join(' | ')
     ].join('\n');
-    try { await navigator.clipboard.writeText(text); btn.textContent = 'Udah disalin, kirim ke pembuatnya ya'; }
+    try { await navigator.clipboard.writeText(text); btn.textContent = 'Udah disalin, kirim ke pembuatnya'; }
     catch (_) { window.prompt('Salin teks ini lalu kirim ke pembuatnya:', text); }
   };
   $('#status').after(btn);
@@ -62,7 +62,7 @@ function renderPlan(force) {
     li.innerHTML = '<span>Bagian ' + (p.i + 1) + '</span>';
     tl.appendChild(li);
   });
-  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file utuh (gak dipotong)');
+  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file, gak dipotong');
 }
 
 function bindSeg(id, key) {
@@ -158,7 +158,7 @@ function ready(info) {
 async function viaProbe() {
   if (S.probing || S.dur) return;
   S.probing = true;
-  hint('Preview gak bisa dibuka di browser ini, ngecek lewat mesin video (download sekali, ±32 MB)...');
+  hint('Preview gak bisa, ngecek lewat mesin video (download ±32 MB, sekali aja)...');
   try {
     const info = await probe();
     if (!info) throw new Error('info video kosong');
@@ -166,7 +166,7 @@ async function viaProbe() {
     ready(info);
   } catch (err) {
     console.error(err);
-    failPick('Videonya gak kebaca. Mungkin belum beres di-download, rusak, atau formatnya gak umum. Cek juga internetnya.');
+    failPick('Video gak kebaca. Mungkin belum kelar didownload, rusak, atau formatnya aneh. Cek juga internet.');
   }
   S.probing = false;
 }
@@ -182,7 +182,7 @@ $('#file').addEventListener('change', async e => {
   $('#stage .frame').style.display = '';
   let file = f;
   if (f.size < 200 * 1048576) {
-    hint('Lagi nyiapin videonya, bentar ya...');
+    hint('Nyiapin video...');
     try { file = new File([await f.arrayBuffer()], f.name, { type: f.type }); } catch (_) { file = f; }
   }
   e.target.value = '';
@@ -260,11 +260,11 @@ $('#go').addEventListener('click', async () => {
       for (;;) {
         try {
           if (!ff) {
-            say(S.ff ? 'Lagi nyiapin videonya...' : 'Lagi nyiapin mesin video (±32 MB, cuma sekali), tunggu bentar...');
+            say(S.ff ? 'Nyiapin video...' : 'Nyiapin mesin video (±32 MB, sekali aja)...');
             ff = await load(); src = await attach(ff);
           }
           S.lvl = LV[lv].label;
-          say('Lagi ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ' • ' + kb + ' kbps). Jangan tutup halamannya ya.');
+          say('Ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ', ' + kb + ' kbps). Jangan ditutup.');
           const code = await encode(ff, src.path, p, name, LV[lv], kb);
           if (code !== 0) throw new Error('Proses berhenti (kode ' + code + '). ' + S.logs.slice(-2).join(' '));
           break;
@@ -276,21 +276,21 @@ $('#go').addEventListener('click', async () => {
             try { ff && ff.terminate(); } catch (_) {}
             S.ff = null; ff = null; src = null;
             S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-            say('Filenya susah dibaca langsung, nyoba cara lain ya...');
+            say('File susah dibaca langsung, coba cara lain...');
             continue;
           }
           if (lv + 1 >= LV.length) throw err;
           try { ff && ff.terminate(); } catch (_) {}
           S.ff = null; ff = null; src = null; lv++;
           S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-          say('RAM HP agak mepet nih, otomatis turun ke ' + LV[lv].label + ' ya...');
+          say('RAM mepet, turun ke ' + LV[lv].label + '...');
         }
       }
       let data = await ff.readFile(name);
       const limit = S.target * 1048576 * 1.03;
       for (let t = 0; t < 2 && !S.manual && data.length > limit && kb > 400; t++) {
         kb = Math.max(400, Math.floor(kb * (S.target * 1048576) / data.length * 0.92));
-        say('Bagian ' + (p.i + 1) + ' masih kegedean (' + mb(data.length) + '), diulang di ' + kb + ' kbps biar pas...');
+        say('Bagian ' + (p.i + 1) + ' masih ' + mb(data.length) + ', diulang di ' + kb + ' kbps...');
         S.cur.style.setProperty('--p', '0%');
         if ((await encode(ff, src.path, p, name, LV[lv], kb)) !== 0) break;
         data = await ff.readFile(name);
@@ -301,10 +301,10 @@ $('#go').addEventListener('click', async () => {
       addResult(new File([data], name, { type: 'video/mp4' }), p);
     }
     $('#res').scrollIntoView({ block: 'start' });
-    say(lv ? 'Beres! Tadi sempat diturunin ke ' + LV[lv].label + ' biar memori HP gak kepenuhan.' : 'Beres! Tinggal simpan, lalu upload ke Status berurutan dari yang pertama.');
+    say(lv ? 'Kelar, tapi diturunin ke ' + LV[lv].label + ' karena memori HP mepet.' : 'Kelar. Simpan, terus upload ke Status urut dari bagian 1.');
   } catch (err) {
     console.error(err, S.logs);
-    if (S.cancel) say('Oke, prosesnya dibatalkan.');
+    if (S.cancel) say('Dibatalin.');
     else { say(friendly(err), true); showReport(err); }
     try { ff && ff.terminate(); } catch (_) {}
     S.ff = null; src = null;
@@ -326,15 +326,15 @@ function addResult(f, p) {
   S.outUrls.push(url);
   const li = document.createElement('li');
   li.innerHTML = '<span class="count">' + String(p.i + 1).padStart(2, '0') + '/ ' + String(S.total).padStart(2, '0') + '</span><div class="frame"><video controls playsinline preload="metadata"></video></div>' +
-    '<div class="row"><div><b></b><small>Lagi ngecek hasil...</small></div><div class="acts"></div></div>';
+    '<div class="row"><div><b></b><small>Ngecek hasil...</small></div><div class="acts"></div></div>';
   const v = li.querySelector('video'), chk = li.querySelector('small');
   li.querySelector('b').textContent = f.name + ' (' + mb(f.size) + ', ' + Math.round(f.size * 8 / 1000 / p.len) + ' kbps)';
   v.onloadedmetadata = () => {
     const ok = isFinite(v.duration) && Math.abs(v.duration - p.len) < 2;
-    chk.textContent = ok ? 'Siap upload • Durasi ' + fmt(v.duration) : 'Durasinya agak meleset nih, coba proses ulang ya';
+    chk.textContent = ok ? 'Siap upload, durasi ' + fmt(v.duration) : 'Durasinya meleset, coba proses ulang';
     chk.className = ok ? 'ok' : 'bad';
   };
-  v.onerror = () => { chk.textContent = 'Preview gak bisa diputar di browser ini, tapi file tetap bisa disimpan dan dicoba di WA'; chk.className = ''; };
+  v.onerror = () => { chk.textContent = 'Preview gak bisa diputar di sini, tapi file tetap bisa disimpan dan dicoba di WA'; chk.className = ''; };
   v.src = url;
   const acts = li.querySelector('.acts');
   if (navigator.canShare && navigator.canShare({ files: [f] })) {
@@ -359,6 +359,6 @@ sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 updateSummary();
 
 if (/FBAN|FBAV|Instagram|TikTok|musical_ly|Line\/|MicroMessenger|; wv\)/i.test(navigator.userAgent)) {
-  hint('Kayaknya kamu buka dari dalam aplikasi lain. Buka lewat Chrome (atau Safari di iPhone) biar semua fitur jalan.');
+  hint('Kayaknya dibuka dari dalam aplikasi lain. Buka lewat Chrome (iPhone: Safari) biar fiturnya jalan.');
 }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
