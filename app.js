@@ -1,4 +1,4 @@
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.3';
 const $ = s => document.querySelector(s);
 const S = {
   file: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1,
@@ -11,7 +11,6 @@ const mb = b => (b / 1048576).toFixed(1) + ' MB';
 const say = (t, err) => { const el = $('#status'); el.textContent = t; el.classList.toggle('err', !!err); };
 const hint = t => { $('#dropHint').textContent = t; };
 
-/* ---------- pesan error yang gampang dimengerti ---------- */
 const errText = err => String((err && err.message) || err);
 const unreadable = err => /NotReadable|could not be read/i.test(errText(err));
 const friendly = err => {
@@ -44,7 +43,6 @@ function showReport(err) {
   $('#status').after(btn);
 }
 
-/* ---------- rencana potongan ---------- */
 const bitrate = len => S.manual > 0
   ? Math.min(20000, Math.max(300, S.manual))
   : Math.max(400, Math.min(4500, Math.floor(S.target * 7600 / len) - 128));
@@ -73,16 +71,21 @@ function bindSeg(id, key) {
     if (!b || S.busy) return;
     S[key] = +b.dataset.v;
     $(id).querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b));
+    updateSummary();
     if (S.dur) renderPlan();
   });
+}
+function updateSummary() {
+  const kb = parseInt($('#kbIn').value, 10) || 0;
+  $('#setSum').textContent = S.fps + ' fps • ' + (S.good ? 'Bagus' : 'Cepat') + ' • ' + (kb > 0 ? kb + ' kbps' : S.target + ' MB') + ' • ' + S.seg + ' dtk';
 }
 bindSeg('#fpsSeg', 'fps'); bindSeg('#lenSeg', 'seg'); bindSeg('#sizeSeg', 'target'); bindSeg('#qSeg', 'good');
 
 $('#kbIn').addEventListener('input', e => {
   $('#sizeSeg').style.opacity = e.target.value.trim() ? '0.45' : '1';
+  updateSummary();
 });
 
-/* ---------- mesin video ---------- */
 async function load() {
   if (S.ff) return S.ff;
   const f = new FFmpegWASM.FFmpeg();
@@ -115,7 +118,6 @@ async function detach(ff, src) {
   try { src.mounted ? await ff.unmount('/in') : await ff.deleteFile('in'); } catch (_) {}
 }
 
-// Cadangan kalau browser gak bisa memutar videonya (misal HEVC/MKV): baca info lewat ffmpeg.
 async function probe() {
   const ff = await load();
   const src = await attach(ff);
@@ -129,7 +131,6 @@ async function probe() {
   return { dur: +d[1] * 3600 + +d[2] * 60 + +d[3], w: v ? +v[1] : 0, h: v ? +v[2] : 0 };
 }
 
-/* ---------- pilih video ---------- */
 function failPick(msg) {
   S.dur = 0;
   $('#stage').hidden = true;
@@ -150,6 +151,7 @@ function ready(info) {
   hint('Ganti video');
   $('#stage').hidden = false;
   $('#go').disabled = false;
+  updateSummary();
   renderPlan();
 }
 
@@ -178,8 +180,6 @@ $('#file').addEventListener('change', async e => {
   $('#res').innerHTML = ''; clearReport(); say('');
   S.noMount = false; S.dur = 0;
   $('#stage .frame').style.display = '';
-  // Salin ke memori selagi izin baca file masih aktif. Di Android izin ini bisa hilang
-  // di tengah proses (NotReadableError), terutama untuk file dari Drive, Foto, atau chat.
   let file = f;
   if (f.size < 200 * 1048576) {
     hint('Lagi nyiapin videonya, bentar ya...');
@@ -198,7 +198,6 @@ $('#file').addEventListener('change', async e => {
   pv.src = S.url;
 });
 
-/* ---------- encode ---------- */
 const levels = () => {
   const L = [
     { h: 1080, fps: S.fps, q: S.good },
@@ -241,7 +240,7 @@ const encode = (ff, path, p, name, lvl, kb) => ff.exec([
 $('#go').addEventListener('click', async () => {
   if (S.busy || !S.file || !S.dur) return;
   S.busy = true; S.cancel = false;
-  $('#go').disabled = true; $('#cancel').hidden = false;
+  $('#go').disabled = true; $('#cancel').hidden = false; $('#setBtn').disabled = true;
   $('#pv').pause();
   clearReport();
   S.manual = Math.max(0, parseInt($('#kbIn').value, 10) || 0);
@@ -301,6 +300,7 @@ $('#go').addEventListener('click', async () => {
       S.cur.firstChild.textContent = 'Selesai';
       addResult(new File([data], name, { type: 'video/mp4' }), p);
     }
+    $('#res').scrollIntoView({ block: 'start' });
     say(lv ? 'Beres! Tadi sempat diturunin ke ' + LV[lv].label + ' biar memori HP gak kepenuhan.' : 'Beres! Tinggal simpan, lalu upload ke Status berurutan dari yang pertama.');
   } catch (err) {
     console.error(err, S.logs);
@@ -312,7 +312,7 @@ $('#go').addEventListener('click', async () => {
   await detach(ff, src);
   if (lock) lock.release().catch(() => {});
   S.cur = null; S.busy = false;
-  $('#go').disabled = false; $('#cancel').hidden = true;
+  $('#go').disabled = false; $('#cancel').hidden = true; $('#setBtn').disabled = false;
 });
 
 $('#cancel').addEventListener('click', () => {
@@ -321,7 +321,6 @@ $('#cancel').addEventListener('click', () => {
   try { S.ff && S.ff.terminate(); } catch (_) {}
 });
 
-/* ---------- hasil ---------- */
 function addResult(f, p) {
   const url = URL.createObjectURL(f);
   S.outUrls.push(url);
@@ -350,7 +349,15 @@ function addResult(f, p) {
   $('#res').appendChild(li);
 }
 
-/* ---------- awal ---------- */
+const sheet = $('#sheet');
+const openSheet = () => { if (S.busy) return; sheet.showModal ? sheet.showModal() : sheet.setAttribute('open', ''); };
+const closeSheet = () => { sheet.close ? sheet.close() : sheet.removeAttribute('open'); };
+$('#setBtn').addEventListener('click', openSheet);
+$('#sheetX').addEventListener('click', closeSheet);
+$('#sheetOk').addEventListener('click', closeSheet);
+sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
+updateSummary();
+
 if (/FBAN|FBAV|Instagram|TikTok|musical_ly|Line\/|MicroMessenger|; wv\)/i.test(navigator.userAgent)) {
   hint('Kayaknya kamu buka dari dalam aplikasi lain. Buka lewat Chrome (atau Safari di iPhone) biar semua fitur jalan.');
 }
