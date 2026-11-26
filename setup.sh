@@ -1,5 +1,5 @@
 #!/bin/sh
-# Jalankan sekali di folder ini (butuh npm + internet)
+# jalankan sekali (butuh npm + internet)
 set -e
 mkdir -p lib && cd lib
 npm init -y >/dev/null 2>&1
