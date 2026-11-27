@@ -1,24 +1,28 @@
-const APP_VERSION = '1.4';
+const APP_VERSION = '1.5';
 const $ = s => document.querySelector(s);
 const S = {
   file: null, url: null, dur: 0, fps: 0, autoFps: 0, srcKbps: 0, seg: 30, target: 15, good: 1, manual: 0, total: 1,
-  noMount: false, picking: false, probing: false, busy: false, cancel: false,
+  drop: ['pick', 'dropInit'], noMount: false, picking: false, probing: false, busy: false, cancel: false,
   ff: null, cur: null, lvl: '', logs: [], outUrls: []
 };
 
 const fmt = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 const mb = b => (b / 1048576).toFixed(1) + ' MB';
 const say = (t, err) => { const el = $('#status'); el.textContent = t; el.classList.toggle('err', !!err); };
-const hint = t => { $('#dropHint').textContent = t; };
+const setDrop = (titleKey, hintKey, vars) => {
+  S.drop = [titleKey, hintKey, vars];
+  $('#dropTitle').textContent = titleKey === 'file' ? (S.file ? S.file.name : '') : t(titleKey);
+  $('#dropHint').textContent = t(hintKey, vars);
+};
 
 const errText = err => String((err && err.message) || err);
 const unreadable = err => /NotReadable|could not be read/i.test(errText(err));
 const friendly = err => {
   const m = errText(err);
-  if (unreadable(err)) return 'Video gak bisa dibaca browser. Pindahin ke Download atau Galeri (bukan dari Drive/chat), pilih ulang, langsung proses.';
-  if (/memory|Aborted|out of bounds|allocation|RangeError/i.test(m)) return 'Memori HP gak kuat. Coba mode Cepat, 30 fps, tutup aplikasi lain.';
-  if (/Failed to fetch|NetworkError|Load failed|failed to import|ffmpeg-core/i.test(m)) return 'Mesin video gagal dimuat. Cek internet, muat ulang, atau pakai Chrome terbaru.';
-  return 'Gagal: ' + m;
+  if (unreadable(err)) return t('errUnread');
+  if (/memory|Aborted|out of bounds|allocation|RangeError/i.test(m)) return t('errMem');
+  if (/Failed to fetch|NetworkError|Load failed|failed to import|ffmpeg-core/i.test(m)) return t('errLoad');
+  return t('errFail', { m });
 };
 
 function clearReport() { const b = $('#reportBtn'); if (b) b.remove(); }
@@ -26,19 +30,19 @@ function showReport(err) {
   clearReport();
   const btn = document.createElement('button');
   btn.id = 'reportBtn'; btn.type = 'button'; btn.className = 'cancel';
-  btn.textContent = 'Salin laporan error';
+  btn.textContent = t('reportBtn');
   btn.onclick = async () => {
     const text = [
       'SW HD v' + APP_VERSION,
       'Browser: ' + navigator.userAgent,
       'Video: ' + (S.file ? mb(S.file.size) + ', ' + fmt(S.dur) : '-'),
-      'Setelan: ' + S.fps + 'fps, potong ' + S.seg + 'd, target ' + S.target + 'MB, manual ' + (S.manual || '-') + ', mode ' + (S.good ? 'Bagus' : 'Cepat'),
+      'Settings: ' + (S.fps || 'auto') + 'fps, cut ' + S.seg + 's, target ' + S.target + 'MB, manual ' + (S.manual || '-') + ', mode ' + (S.good ? 'best' : 'fast') + ', lang ' + LANG,
       'Level: ' + (S.lvl || '-'),
       'Error: ' + errText(err),
       'Log: ' + S.logs.slice(-12).join(' | ')
     ].join('\n');
-    try { await navigator.clipboard.writeText(text); btn.textContent = 'Udah disalin, kirim ke pembuatnya'; }
-    catch (_) { window.prompt('Salin teks ini lalu kirim ke pembuatnya:', text); }
+    try { await navigator.clipboard.writeText(text); btn.textContent = t('reportDone'); }
+    catch (_) { window.prompt(t('reportPrompt'), text); }
   };
   $('#status').after(btn);
 }
@@ -64,10 +68,10 @@ function drawTimeline(parts) {
   parts.forEach(p => {
     const li = document.createElement('li');
     li.style.flex = p.len;
-    li.innerHTML = '<span>' + (p.tag || 'Bagian ' + (p.i + 1)) + '</span>';
+    li.innerHTML = '<span>' + (p.tag || t('tlPart', { n: p.i + 1 })) + '</span>';
     tl.appendChild(li);
   });
-  $('#mParts').textContent = parts[0] && parts[0].tag ? parts.length + ' klip uji' : parts.length + (parts.length > 1 ? ' bagian' : ' file, gak dipotong');
+  $('#mParts').textContent = parts[0] && parts[0].tag ? t('partsTest', { n: parts.length }) : parts.length > 1 ? t('partsMany', { n: parts.length }) : t('partsOne');
 }
 function renderPlan(force) {
   if (S.busy && !force) return;
@@ -86,7 +90,7 @@ function bindSeg(id, key) {
 }
 function updateSummary() {
   const kb = parseInt($('#kbIn').value, 10) || 0;
-  $('#setSum').textContent = (S.fps ? S.fps + ' fps' : 'fps asli') + ' • ' + (S.good ? 'Bagus' : 'Cepat') + ' • ' + (kb > 0 ? kb + ' kbps' : S.target + ' MB') + ' • ' + S.seg + ' dtk';
+  $('#setSum').textContent = (S.fps ? S.fps + ' fps' : t('sumOrig')) + ' • ' + (S.good ? t('sumGood') : t('sumFast')) + ' • ' + (kb > 0 ? kb + ' kbps' : S.target + ' MB') + ' • ' + t('sumSec', { n: S.seg });
 }
 bindSeg('#fpsSeg', 'fps'); bindSeg('#lenSeg', 'seg'); bindSeg('#sizeSeg', 'target'); bindSeg('#qSeg', 'good');
 
@@ -146,13 +150,12 @@ async function probe() {
   return { dur: +d[1] * 3600 + +d[2] * 60 + +d[3], w: v ? +v[1] : 0, h: v ? +v[2] : 0 };
 }
 
-function failPick(msg) {
+function failPick(key) {
   S.dur = 0;
   $('#stage').hidden = true;
   $('#go').disabled = true;
   $('#drop').classList.remove('small');
-  $('#dropTitle').textContent = 'Videonya gak bisa dibuka';
-  hint(msg);
+  setDrop('failTitle', key);
 }
 
 function ready(info) {
@@ -163,8 +166,7 @@ function ready(info) {
   $('#mRes').textContent = info.w && info.h ? info.w + 'x' + info.h : '-';
   $('#mSize').textContent = mb(f.size) + ' (' + Math.round(f.size * 8 / 1000 / S.dur) + ' kbps)';
   $('#drop').classList.add('small');
-  $('#dropTitle').textContent = f.name;
-  hint('Ganti video');
+  setDrop('file', 'changeVideo');
   $('#stage').hidden = false;
   $('#go').disabled = false;
   updateSummary();
@@ -174,7 +176,7 @@ function ready(info) {
 async function viaProbe() {
   if (S.probing || S.dur) return;
   S.probing = true;
-  hint('Preview gak bisa, ngecek lewat mesin video (download ±32 MB, sekali aja)...');
+  setDrop('pick', 'probing');
   try {
     const info = await probe();
     if (!info) throw new Error('info video kosong');
@@ -182,7 +184,7 @@ async function viaProbe() {
     ready(info);
   } catch (err) {
     console.error(err);
-    failPick('Video gak kebaca. Mungkin belum kelar didownload, rusak, atau formatnya aneh. Cek juga internet.');
+    failPick('failRead');
   }
   S.probing = false;
 }
@@ -198,7 +200,7 @@ $('#file').addEventListener('change', async e => {
   $('#stage .frame').style.display = '';
   let file = f;
   if (f.size < 200 * 1048576) {
-    hint('Nyiapin video...');
+    setDrop('pick', 'prep');
     try { file = new File([await f.arrayBuffer()], f.name, { type: f.type }); } catch (_) { file = f; }
   }
   e.target.value = '';
@@ -221,7 +223,7 @@ const levels = () => {
     { h: 540, fps: 30, q: 0 }
   ], seen = new Set();
   return L.filter(l => { const k = l.h + '/' + l.fps + '/' + l.q; return !seen.has(k) && seen.add(k); })
-    .map(l => ({ ...l, label: l.h + 'p ' + l.fps + 'fps • Mode ' + (l.q ? 'Bagus' : 'Cepat') }));
+    .map(l => ({ ...l, label: l.h + 'p ' + l.fps + 'fps • ' + t('lvMode', { m: l.q ? t('sumGood') : t('sumFast') }) }));
 };
 
 const filter = l => {
@@ -278,12 +280,12 @@ async function run(test) {
       for (;;) {
         try {
           if (!ff) {
-            say(S.ff ? 'Nyiapin video...' : 'Nyiapin mesin video (±32 MB, sekali aja)...');
+            say(t(S.ff ? 'prep' : 'prepEngine'));
             ff = await load(); src = await attach(ff);
             if (!S.fps) { await readSrcFps(ff, src); LV = levels(); }
           }
           S.lvl = LV[lv].label;
-          say((p.tag ? 'Ngolah klip uji ' + p.tag : 'Ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length) + ' (' + LV[lv].label + ', ' + kb + ' kbps). Jangan ditutup.');
+          say(p.tag ? t('workingTest', { tag: p.tag, lvl: LV[lv].label, kb }) : t('working', { i: p.i + 1, n: parts.length, lvl: LV[lv].label, kb }));
           const code = await encode(ff, src.path, p, name, LV[lv], kb);
           if (code !== 0) throw new Error('Proses berhenti (kode ' + code + '). ' + S.logs.slice(-2).join(' '));
           break;
@@ -294,36 +296,36 @@ async function run(test) {
             S.noMount = true;
             try { ff && ff.terminate(); } catch (_) {}
             S.ff = null; ff = null; src = null;
-            S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-            say('File susah dibaca langsung, coba cara lain...');
+            S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = t('retryTag');
+            say(t('unreadRetry'));
             continue;
           }
           if (lv + 1 >= LV.length) throw err;
           try { ff && ff.terminate(); } catch (_) {}
           S.ff = null; ff = null; src = null; lv++;
-          S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = 'Ulang';
-          say('RAM mepet, turun ke ' + LV[lv].label + '...');
+          S.cur.style.setProperty('--p', '0%'); S.cur.firstChild.textContent = t('retryTag');
+          say(t('memDown', { lvl: LV[lv].label }));
         }
       }
       let data = await ff.readFile(name);
       const limit = S.target * 1048576 * 1.03;
       for (let t = 0; t < 2 && !S.manual && !p.kb && data.length > limit && kb > 400; t++) {
         kb = Math.max(400, Math.floor(kb * (S.target * 1048576) / data.length * 0.92));
-        say('Bagian ' + (p.i + 1) + ' masih ' + mb(data.length) + ', diulang di ' + kb + ' kbps...');
+        say(t('bigAgain', { i: p.i + 1, size: mb(data.length), kb }));
         S.cur.style.setProperty('--p', '0%');
         if ((await encode(ff, src.path, p, name, LV[lv], kb)) !== 0) break;
         data = await ff.readFile(name);
       }
       await ff.deleteFile(name);
       S.cur.style.setProperty('--p', '100%');
-      S.cur.firstChild.textContent = 'Selesai';
+      S.cur.firstChild.textContent = t('doneTag');
       addResult(new File([data], name, { type: 'video/mp4' }), p);
     }
     $('#res').scrollIntoView({ block: 'start' });
-    say(test ? 'Kelar. Upload keempatnya ke Status, lihat yang mana masih tajam.' : lv ? 'Kelar, tapi diturunin ke ' + LV[lv].label + ' karena memori HP mepet.' : 'Kelar. Simpan, terus upload ke Status urut dari bagian 1.');
+    say(test ? t('doneTest') : lv ? t('doneDown', { lvl: LV[lv].label }) : t('done'));
   } catch (err) {
     console.error(err, S.logs);
-    if (S.cancel) say('Dibatalin.');
+    if (S.cancel) say(t('cancelled'));
     else { say(friendly(err), true); showReport(err); }
     try { ff && ff.terminate(); } catch (_) {}
     S.ff = null; src = null;
@@ -346,25 +348,25 @@ function addResult(f, p) {
   S.outUrls.push(url);
   const li = document.createElement('li');
   li.innerHTML = '<span class="count">' + String(p.i + 1).padStart(2, '0') + '/ ' + String(S.total).padStart(2, '0') + '</span><div class="frame"><video controls playsinline preload="metadata"></video></div>' +
-    '<div class="row"><div><b></b><small>Ngecek hasil...</small></div><div class="acts"></div></div>';
+    '<div class="row"><div><b></b><small>' + t('resChecking') + '</small></div><div class="acts"></div></div>';
   const v = li.querySelector('video'), chk = li.querySelector('small');
   li.querySelector('b').textContent = f.name + ' (' + mb(f.size) + ', ' + Math.round(f.size * 8 / 1000 / p.len) + ' kbps)';
   v.onloadedmetadata = () => {
     const ok = isFinite(v.duration) && Math.abs(v.duration - p.len) < 2;
-    chk.textContent = ok ? 'Siap upload, durasi ' + fmt(v.duration) : 'Durasinya meleset, coba proses ulang';
+    chk.textContent = ok ? t('resOk', { d: fmt(v.duration) }) : t('resBad');
     chk.className = ok ? 'ok' : 'bad';
   };
-  v.onerror = () => { chk.textContent = 'Preview gak bisa diputar di sini, tapi file tetap bisa disimpan dan dicoba di WA'; chk.className = ''; };
+  v.onerror = () => { chk.textContent = t('resNoPreview'); chk.className = ''; };
   v.src = url;
   const acts = li.querySelector('.acts');
   if (navigator.canShare && navigator.canShare({ files: [f] })) {
     const s = document.createElement('button');
-    s.className = 'main'; s.textContent = 'Bagikan';
+    s.className = 'main'; s.textContent = t('share');
     s.onclick = () => navigator.share({ files: [f] }).catch(() => {});
     acts.appendChild(s);
   }
   const a = document.createElement('a');
-  a.href = url; a.download = f.name; a.textContent = 'Simpan';
+  a.href = url; a.download = f.name; a.textContent = t('save');
   acts.appendChild(a);
   $('#res').appendChild(li);
 }
@@ -380,6 +382,12 @@ sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 updateSummary();
 
 if (/FBAN|FBAV|Instagram|TikTok|musical_ly|Line\/|MicroMessenger|; wv\)/i.test(navigator.userAgent)) {
-  hint('Kayaknya dibuka dari dalam aplikasi lain. Buka lewat Chrome (iPhone: Safari) biar fiturnya jalan.');
+  setDrop('pick', 'inApp');
 }
+window.onLang = () => {
+  setDrop(...S.drop);
+  updateSummary();
+  if (S.dur && !S.busy) renderPlan();
+};
+initLang();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
