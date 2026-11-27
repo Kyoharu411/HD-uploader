@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -11,113 +11,127 @@
 </head>
 <body>
 <header>
+  <button class="langbtn" id="langBtn" type="button" aria-label="Language">EN</button>
   <span class="chip">By @Kyoharu</span>
   <h1>SW HD</h1>
-  <p class="sub">Tidak selalu berhasil :v</p>
+  <p class="sub" data-i="sub">Doesn't always work :v</p>
 </header>
 
 <main>
   <label class="drop" id="drop">
     <input type="file" id="file" accept="video/*" hidden>
-    <span class="big" id="dropTitle">Pilih video</span>
-    <span class="hint" id="dropHint">Diproses di HP, gak diupload ke mana-mana.</span>
+    <span class="big" id="dropTitle"></span>
+    <span class="hint" id="dropHint"></span>
   </label>
 
   <section id="stage" hidden>
     <div class="frame"><video id="pv" controls playsinline preload="metadata"></video></div>
 
     <dl class="meta">
-      <div><dt>Durasi</dt><dd id="mDur"></dd></div>
-      <div><dt>Resolusi</dt><dd id="mRes"></dd></div>
-      <div><dt>Ukuran</dt><dd id="mSize"></dd></div>
-      <div><dt>Hasil</dt><dd id="mParts"></dd></div>
+      <div><dt data-i="dDur">Duration</dt><dd id="mDur"></dd></div>
+      <div><dt data-i="dRes">Resolution</dt><dd id="mRes"></dd></div>
+      <div><dt data-i="dSize">Size</dt><dd id="mSize"></dd></div>
+      <div><dt data-i="dParts">Result</dt><dd id="mParts"></dd></div>
     </dl>
 
-    <ol class="tl" id="tl" aria-label="Pembagian bagian video"></ol>
+    <ol class="tl" id="tl" data-i-aria="tlAria"></ol>
 
     <button class="setrow" id="setBtn" type="button" aria-haspopup="dialog">
-      <span class="k">Setelan</span>
+      <span class="k" data-i="setLabel">Settings</span>
       <span class="v" id="setSum"></span>
-      <span class="c" aria-hidden="true">Ubah</span>
+      <span class="c" aria-hidden="true" data-i="setChange">Change</span>
     </button>
 
     <p class="status" id="status" role="status" aria-live="polite"></p>
 
     <div class="dock">
-      <button class="go" id="go" type="button" disabled>Gas proses</button>
-      <button class="cancel" id="cancel" type="button" hidden>Stop</button>
+      <button class="go" id="go" type="button" disabled data-i="go">Start</button>
+      <button class="cancel" id="cancel" type="button" hidden data-i="stop">Stop</button>
     </div>
   </section>
 
   <ol class="res" id="res"></ol>
 </main>
 
-<dialog class="sheet" id="sheet" aria-label="Setelan">
+<dialog class="sheet" id="sheet" aria-label="Settings">
   <div class="sheet-in">
     <div class="sheet-head">
-      <b>Setelan</b>
-      <button type="button" class="x" id="sheetX">Tutup</button>
+      <b data-i="setLabel">Settings</b>
+      <button type="button" class="x" id="sheetX" data-i="sheetClose">Close</button>
     </div>
     <div class="sheet-body">
       <fieldset>
-        <legend>Mode proses</legend>
+        <legend data-i="lgMode">Process mode</legend>
         <div class="seg" id="qSeg">
-          <button type="button" data-v="1" aria-pressed="true">Bagus (lama)</button>
-          <button type="button" data-v="0" aria-pressed="false">Cepat</button>
+          <button type="button" data-v="1" aria-pressed="true" data-i="modeGood">Best (slower)</button>
+          <button type="button" data-v="0" aria-pressed="false" data-i="modeFast">Fast</button>
         </div>
-        <p class="note">Bagus lebih tajam tapi lebih lama.</p>
+        <p class="note" data-i="modeNote"></p>
       </fieldset>
 
       <fieldset>
-        <legend>Target ukuran file</legend>
+        <legend data-i="lgSize">Target file size</legend>
         <div class="seg" id="sizeSeg">
           <button type="button" data-v="7" aria-pressed="false">7 MB</button>
           <button type="button" data-v="15" aria-pressed="true">15 MB</button>
           <button type="button" data-v="30" aria-pressed="false">30 MB</button>
           <button type="button" data-v="60" aria-pressed="false">60 MB</button>
         </div>
-        <p class="note">Makin besar makin tajam, tapi WA bisa kompres ulang kalau kegedean. Cek lewat uji di bawah.</p>
+        <p class="note" data-i="sizeNote"></p>
       </fieldset>
 
       <fieldset>
-        <legend>Frame rate</legend>
+        <legend data-i="lgFps">Frame rate</legend>
         <div class="seg" id="fpsSeg">
-          <button type="button" data-v="0" aria-pressed="true">Asli</button>
+          <button type="button" data-v="0" aria-pressed="true" data-i="fpsOrig">Original</button>
           <button type="button" data-v="30" aria-pressed="false">30 fps</button>
           <button type="button" data-v="60" aria-pressed="false">60 fps</button>
         </div>
-        <p class="note">Asli = ikut fps videonya (30 atau 60).</p>
+        <p class="note" data-i="fpsNote"></p>
       </fieldset>
 
       <fieldset>
-        <legend>Potong per berapa detik</legend>
+        <legend data-i="lgSeg">Cut every how many seconds</legend>
         <div class="seg" id="lenSeg">
-          <button type="button" data-v="30" aria-pressed="true">30 detik</button>
-          <button type="button" data-v="60" aria-pressed="false">60 detik</button>
-          <button type="button" data-v="90" aria-pressed="false">90 detik</button>
+          <button type="button" data-v="30" aria-pressed="true" data-i="secN" data-n="30">30 sec</button>
+          <button type="button" data-v="60" aria-pressed="false" data-i="secN" data-n="60">60 sec</button>
+          <button type="button" data-v="90" aria-pressed="false" data-i="secN" data-n="90">90 sec</button>
         </div>
-        <p class="note">Samain sama batas durasi Status kamu.</p>
+        <p class="note" data-i="segNote"></p>
       </fieldset>
 
       <fieldset>
-        <legend>Bitrate manual (opsional)</legend>
-        <input class="num" id="kbIn" type="number" inputmode="numeric" min="300" max="20000" placeholder="kbps, kosongin = otomatis">
-        <p class="note">Kalau diisi, target ukuran gak dipakai. 1800 kbps kira-kira 7 MB per 30 detik.</p>
+        <legend data-i="lgManual">Manual bitrate (optional)</legend>
+        <input class="num" id="kbIn" type="number" inputmode="numeric" min="300" max="20000" data-i-ph="manualPh">
+        <p class="note" data-i="manualNote"></p>
       </fieldset>
+
       <fieldset>
-        <legend>Uji kualitas di WA</legend>
-        <button type="button" class="test" id="testBtn">Bikin 4 klip uji</button>
-        <p class="note">Bikin 4 klip 10 detik dengan bitrate beda. Upload semuanya ke Status, lihat mana yang masih tajam.</p>
+        <legend data-i="lgTest">Test quality on WhatsApp</legend>
+        <button type="button" class="test" id="testBtn" data-i="testBtn">Make 4 test clips</button>
+        <p class="note" data-i="testNote"></p>
       </fieldset>
     </div>
     <div class="sheet-foot">
-      <button type="button" class="go" id="sheetOk">Selesai</button>
+      <button type="button" class="go" id="sheetOk" data-i="sheetDone">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="sheet" id="langDlg" aria-label="Language">
+  <div class="sheet-in">
+    <div class="sheet-head"><b>Language / Bahasa</b></div>
+    <div class="sheet-body">
+      <button type="button" class="langopt" data-lang="en" aria-pressed="false">English</button>
+      <button type="button" class="langopt" data-lang="id" aria-pressed="false">Bahasa Indonesia</button>
+      <button type="button" class="langopt" data-lang="ms" aria-pressed="false">Bahasa Melayu</button>
     </div>
   </div>
 </dialog>
 
 <script src="lib/ffmpeg.js"></script>
 <script src="lib/util.js"></script>
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
