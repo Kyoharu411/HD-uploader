@@ -4,26 +4,28 @@ Keep WhatsApp Status videos sharp. SW HD splits and re-encodes your video right 
 
 **Try it:** https://kyoharu411.github.io/HD-uploader/
 
-The interface is in Indonesian.
+The interface is available in English, Indonesian and Malay. You pick the language on first launch and can change it from the button in the corner.
 
 ## How it works
 
 WhatsApp squashes videos that are too big or too long. SW HD prepares the video first: it cuts it into parts that fit the Status length limit and encodes each part to a target file size, keeping the resolution (up to 1080p) and frame rate.
 
 1. Pick a video.
-2. Open **Setelan** if you want to change anything.
-3. Tap **Gas proses** and wait.
+2. Open **Settings** if you want to change anything.
+3. Tap **Start** and wait.
 4. Save or share each part, then post them in order.
 
 ## Settings
 
 | Setting | Options |
 | --- | --- |
-| Mode | Bagus (slower, sharper) or Cepat (faster) |
-| Target size | 7, 10 or 15 MB per part |
-| Frame rate | 30 or 60 fps |
+| Mode | Best (slower, sharper) or Fast |
+| Target size | 7, 15, 30 or 60 MB per part |
+| Frame rate | Original (follows the video), 30 or 60 fps |
 | Part length | 30, 60 or 90 seconds |
 | Manual bitrate | Optional, in kbps. Overrides target size |
+
+There is also a test button that makes four short clips at different bitrates, so you can post them to Status and see which ones WhatsApp leaves alone.
 
 If the phone runs out of memory, it steps down automatically (1080p, then 720p, then 540p).
 
