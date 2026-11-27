@@ -1,7 +1,7 @@
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 const $ = s => document.querySelector(s);
 const S = {
-  file: null, url: null, dur: 0, fps: 30, seg: 30, target: 7, good: 1, manual: 0, total: 1,
+  file: null, url: null, dur: 0, fps: 0, autoFps: 0, srcKbps: 0, seg: 30, target: 15, good: 1, manual: 0, total: 1,
   noMount: false, picking: false, probing: false, busy: false, cancel: false,
   ff: null, cur: null, lvl: '', logs: [], outUrls: []
 };
@@ -43,26 +43,35 @@ function showReport(err) {
   $('#status').after(btn);
 }
 
-const bitrate = len => S.manual > 0
-  ? Math.min(20000, Math.max(300, S.manual))
-  : Math.max(400, Math.min(4500, Math.floor(S.target * 7600 / len) - 128));
+const bitrate = len => {
+  if (S.manual > 0) return Math.min(20000, Math.max(300, S.manual));
+  const k = Math.floor(S.target * 8192 * 0.93 / len) - 128;
+  const cap = S.srcKbps ? Math.max(1500, Math.round(S.srcKbps * 0.95)) : 20000;
+  return Math.max(400, Math.min(20000, cap, k));
+};
+const testJobs = () => [2000, 4000, 8000, 14000].map((kb, i) => ({
+  i, start: 0, len: Math.min(10, S.dur), kb, name: 'uji-' + kb + 'k.mp4', tag: kb + 'k'
+}));
 
 const plan = () => {
   const n = Math.max(1, Math.ceil(S.dur / S.seg - 0.05));
   return Array.from({ length: n }, (_, i) => ({ i, start: i * S.seg, len: Math.min(S.seg, S.dur - i * S.seg) }));
 };
 
-function renderPlan(force) {
-  if (S.busy && !force) return;
-  const parts = plan(), tl = $('#tl');
+function drawTimeline(parts) {
+  const tl = $('#tl');
   tl.innerHTML = '';
   parts.forEach(p => {
     const li = document.createElement('li');
     li.style.flex = p.len;
-    li.innerHTML = '<span>Bagian ' + (p.i + 1) + '</span>';
+    li.innerHTML = '<span>' + (p.tag || 'Bagian ' + (p.i + 1)) + '</span>';
     tl.appendChild(li);
   });
-  $('#mParts').textContent = parts.length + (parts.length > 1 ? ' bagian' : ' file, gak dipotong');
+  $('#mParts').textContent = parts[0] && parts[0].tag ? parts.length + ' klip uji' : parts.length + (parts.length > 1 ? ' bagian' : ' file, gak dipotong');
+}
+function renderPlan(force) {
+  if (S.busy && !force) return;
+  drawTimeline(plan());
 }
 
 function bindSeg(id, key) {
@@ -77,7 +86,7 @@ function bindSeg(id, key) {
 }
 function updateSummary() {
   const kb = parseInt($('#kbIn').value, 10) || 0;
-  $('#setSum').textContent = S.fps + ' fps • ' + (S.good ? 'Bagus' : 'Cepat') + ' • ' + (kb > 0 ? kb + ' kbps' : S.target + ' MB') + ' • ' + S.seg + ' dtk';
+  $('#setSum').textContent = (S.fps ? S.fps + ' fps' : 'fps asli') + ' • ' + (S.good ? 'Bagus' : 'Cepat') + ' • ' + (kb > 0 ? kb + ' kbps' : S.target + ' MB') + ' • ' + S.seg + ' dtk';
 }
 bindSeg('#fpsSeg', 'fps'); bindSeg('#lenSeg', 'seg'); bindSeg('#sizeSeg', 'target'); bindSeg('#qSeg', 'good');
 
@@ -113,6 +122,12 @@ async function attach(ff) {
   await ff.writeFile('in', await FFmpegUtil.fetchFile(S.file));
   return { path: 'in', mounted: false };
 }
+async function readSrcFps(ff, src) {
+  S.logs = [];
+  try { await ff.exec(['-hide_banner', '-i', src.path]); } catch (_) {}
+  const m = /,\s*([\d.]+)\s*fps/.exec(S.logs.join('\n'));
+  S.autoFps = m && parseFloat(m[1]) >= 50 ? 60 : 30;
+}
 async function detach(ff, src) {
   if (!ff || !src) return;
   try { src.mounted ? await ff.unmount('/in') : await ff.deleteFile('in'); } catch (_) {}
@@ -143,6 +158,7 @@ function failPick(msg) {
 function ready(info) {
   const f = S.file;
   S.dur = info.dur;
+  S.srcKbps = Math.round(f.size * 8 / 1000 / S.dur);
   $('#mDur').textContent = fmt(S.dur);
   $('#mRes').textContent = info.w && info.h ? info.w + 'x' + info.h : '-';
   $('#mSize').textContent = mb(f.size) + ' (' + Math.round(f.size * 8 / 1000 / S.dur) + ' kbps)';
@@ -178,7 +194,7 @@ $('#file').addEventListener('change', async e => {
   if (S.url) URL.revokeObjectURL(S.url);
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = [];
   $('#res').innerHTML = ''; clearReport(); say('');
-  S.noMount = false; S.dur = 0;
+  S.noMount = false; S.dur = 0; S.autoFps = 0; S.srcKbps = 0;
   $('#stage .frame').style.display = '';
   let file = f;
   if (f.size < 200 * 1048576) {
@@ -200,7 +216,7 @@ $('#file').addEventListener('change', async e => {
 
 const levels = () => {
   const L = [
-    { h: 1080, fps: S.fps, q: S.good },
+    { h: 1080, fps: S.fps || S.autoFps || 30, q: S.good },
     { h: 720, fps: 30, q: 0 },
     { h: 540, fps: 30, q: 0 }
   ], seen = new Set();
@@ -237,7 +253,7 @@ const encode = (ff, path, p, name, lvl, kb) => ff.exec([
   name
 ]);
 
-$('#go').addEventListener('click', async () => {
+async function run(test) {
   if (S.busy || !S.file || !S.dur) return;
   S.busy = true; S.cancel = false;
   $('#go').disabled = true; $('#cancel').hidden = false; $('#setBtn').disabled = true;
@@ -247,24 +263,27 @@ $('#go').addEventListener('click', async () => {
   if (S.manual > 20000) { S.manual = 20000; $('#kbIn').value = 20000; }
   S.outUrls.forEach(URL.revokeObjectURL); S.outUrls = []; $('#res').innerHTML = '';
   S.logs = [];
-  renderPlan(true);
-  const items = [...$('#tl').children], parts = plan(), LV = levels();
+  const parts = test ? testJobs() : plan();
+  drawTimeline(parts);
+  const items = [...$('#tl').children];
+  let LV = levels();
   S.total = parts.length;
   let lock = null, ff = null, src = null, lv = 0, lastErr = null;
   try {
     try { lock = await navigator.wakeLock.request('screen'); } catch (_) {}
     for (const p of parts) {
       S.cur = items[p.i];
-      const name = 'sw-' + String(p.i).padStart(3, '0') + '.mp4';
-      let kb = bitrate(p.len);
+      const name = p.name || 'sw-' + String(p.i).padStart(3, '0') + '.mp4';
+      let kb = p.kb || bitrate(p.len);
       for (;;) {
         try {
           if (!ff) {
             say(S.ff ? 'Nyiapin video...' : 'Nyiapin mesin video (±32 MB, sekali aja)...');
             ff = await load(); src = await attach(ff);
+            if (!S.fps) { await readSrcFps(ff, src); LV = levels(); }
           }
           S.lvl = LV[lv].label;
-          say('Ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length + ' (' + LV[lv].label + ', ' + kb + ' kbps). Jangan ditutup.');
+          say((p.tag ? 'Ngolah klip uji ' + p.tag : 'Ngolah bagian ' + (p.i + 1) + ' dari ' + parts.length) + ' (' + LV[lv].label + ', ' + kb + ' kbps). Jangan ditutup.');
           const code = await encode(ff, src.path, p, name, LV[lv], kb);
           if (code !== 0) throw new Error('Proses berhenti (kode ' + code + '). ' + S.logs.slice(-2).join(' '));
           break;
@@ -288,7 +307,7 @@ $('#go').addEventListener('click', async () => {
       }
       let data = await ff.readFile(name);
       const limit = S.target * 1048576 * 1.03;
-      for (let t = 0; t < 2 && !S.manual && data.length > limit && kb > 400; t++) {
+      for (let t = 0; t < 2 && !S.manual && !p.kb && data.length > limit && kb > 400; t++) {
         kb = Math.max(400, Math.floor(kb * (S.target * 1048576) / data.length * 0.92));
         say('Bagian ' + (p.i + 1) + ' masih ' + mb(data.length) + ', diulang di ' + kb + ' kbps...');
         S.cur.style.setProperty('--p', '0%');
@@ -301,7 +320,7 @@ $('#go').addEventListener('click', async () => {
       addResult(new File([data], name, { type: 'video/mp4' }), p);
     }
     $('#res').scrollIntoView({ block: 'start' });
-    say(lv ? 'Kelar, tapi diturunin ke ' + LV[lv].label + ' karena memori HP mepet.' : 'Kelar. Simpan, terus upload ke Status urut dari bagian 1.');
+    say(test ? 'Kelar. Upload keempatnya ke Status, lihat yang mana masih tajam.' : lv ? 'Kelar, tapi diturunin ke ' + LV[lv].label + ' karena memori HP mepet.' : 'Kelar. Simpan, terus upload ke Status urut dari bagian 1.');
   } catch (err) {
     console.error(err, S.logs);
     if (S.cancel) say('Dibatalin.');
@@ -313,7 +332,8 @@ $('#go').addEventListener('click', async () => {
   if (lock) lock.release().catch(() => {});
   S.cur = null; S.busy = false;
   $('#go').disabled = false; $('#cancel').hidden = true; $('#setBtn').disabled = false;
-});
+}
+$('#go').addEventListener('click', () => run(false));
 
 $('#cancel').addEventListener('click', () => {
   if (!S.busy) return;
@@ -355,6 +375,7 @@ const closeSheet = () => { sheet.close ? sheet.close() : sheet.removeAttribute('
 $('#setBtn').addEventListener('click', openSheet);
 $('#sheetX').addEventListener('click', closeSheet);
 $('#sheetOk').addEventListener('click', closeSheet);
+$('#testBtn').addEventListener('click', () => { closeSheet(); run(true); });
 sheet.addEventListener('click', e => { if (e.target === sheet) closeSheet(); });
 updateSummary();
 
