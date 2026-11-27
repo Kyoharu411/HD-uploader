@@ -71,20 +71,22 @@
       <fieldset>
         <legend>Target ukuran file</legend>
         <div class="seg" id="sizeSeg">
-          <button type="button" data-v="7" aria-pressed="true">7 MB</button>
-          <button type="button" data-v="10" aria-pressed="false">10 MB</button>
-          <button type="button" data-v="15" aria-pressed="false">15 MB</button>
+          <button type="button" data-v="7" aria-pressed="false">7 MB</button>
+          <button type="button" data-v="15" aria-pressed="true">15 MB</button>
+          <button type="button" data-v="30" aria-pressed="false">30 MB</button>
+          <button type="button" data-v="60" aria-pressed="false">60 MB</button>
         </div>
-        <p class="note">Kalau masih dikompres WA, coba 7 MB.</p>
+        <p class="note">Makin besar makin tajam, tapi WA bisa kompres ulang kalau kegedean. Cek lewat uji di bawah.</p>
       </fieldset>
 
       <fieldset>
         <legend>Frame rate</legend>
         <div class="seg" id="fpsSeg">
-          <button type="button" data-v="30" aria-pressed="true">30 fps</button>
+          <button type="button" data-v="0" aria-pressed="true">Asli</button>
+          <button type="button" data-v="30" aria-pressed="false">30 fps</button>
           <button type="button" data-v="60" aria-pressed="false">60 fps</button>
         </div>
-        <p class="note">60 fps cuma ngaruh kalau videonya memang 60 fps.</p>
+        <p class="note">Asli = ikut fps videonya (30 atau 60).</p>
       </fieldset>
 
       <fieldset>
@@ -100,7 +102,12 @@
       <fieldset>
         <legend>Bitrate manual (opsional)</legend>
         <input class="num" id="kbIn" type="number" inputmode="numeric" min="300" max="20000" placeholder="kbps, kosongin = otomatis">
-        <p class="note">Kalau diisi, target ukuran gak dipakai. 1800 kbps sekitar 7 MB per 30 detik.</p>
+        <p class="note">Kalau diisi, target ukuran gak dipakai. 1800 kbps kira-kira 7 MB per 30 detik.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Uji kualitas di WA</legend>
+        <button type="button" class="test" id="testBtn">Bikin 4 klip uji</button>
+        <p class="note">Bikin 4 klip 10 detik dengan bitrate beda. Upload semuanya ke Status, lihat mana yang masih tajam.</p>
       </fieldset>
     </div>
     <div class="sheet-foot">
